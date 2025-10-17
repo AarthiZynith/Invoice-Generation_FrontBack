@@ -284,7 +284,7 @@ export const updateCustomerStatus = async (req, res) => {
 
 
 
-// Generate dynamic Invoice PDF - FIXED ALIGNMENT
+// Generate dynamic Invoice PDF - WITH HEADER ON ALL PAGES
 export const generateInvoice = async (req, res) => {
   try {
     const { customerId, items, totalAmount, invoiceDate, dueDate, taxPercent, notes } = req.body;
@@ -356,99 +356,80 @@ export const generateInvoice = async (req, res) => {
     const pageWidth = 550;
     const columnWidth = 200;
 
+    // ===== HEADER FUNCTION - TO BE CALLED ON EVERY PAGE =====
+    const addHeader = (pageNumber) => {
+      const headerY = 30;
+      
+      // ===== LOGO SECTION =====
+      const logoWidth = 90;
+      const logoHeight = 90;
+      const logoX = pageWidth - logoWidth + 15;
+      
+      try {
+        const logoPath = "C:/Users/Aarthi/Documents/logo.jpeg";
+        if (fs.existsSync(logoPath)) {
+          doc.image(logoPath, logoX, headerY, { 
+            width: logoWidth, 
+            height: logoHeight 
+          });
+        }
+      } catch (logoError) {
+        console.error("❌ Error loading logo:", logoError);
+      }
 
-    //-----------------------------------------
+      // ===== COMPANY INFO =====
+      doc.fontSize(20).font('Helvetica-Bold').text(company.name, leftColumn, headerY);
+      
+      doc.fontSize(10).font('Helvetica')
+         .text(company.address, leftColumn, headerY + 30)
+         .text(`Phone: ${company.phone || "000-000-0000"}`, leftColumn, headerY + 45)
+         .text(`Email: ${company.email || "contact@company.com"}`, leftColumn, headerY + 60);
+
+      if (company.gst) {
+        doc.text(`GST: ${company.gst}`, leftColumn, headerY + 75);
+      }
+
+      // Horizontal line after header
+      const lineY = Math.max(headerY + logoHeight, headerY + 90) + 10;
+      doc.moveTo(leftColumn, lineY).lineTo(pageWidth, lineY).stroke();
+      
+      // ADD SPACE AFTER HEADER LINE - This is the key change
+      const spaceAfterHeader = 20; // Adjust this value to increase/decrease space
+      
+      // Page number (optional)
+      doc.fontSize(8).font('Helvetica')
+         .text(`Page ${pageNumber}`, pageWidth - 30, headerY + 10);
+      
+      // Return the Y position after header (line position + space)
+      return lineY + spaceAfterHeader;
+    };
+
+    // ===== FOOTER FUNCTION - FOR LAST PAGE ONLY =====
+    const addFooter = () => {
+      const footerY = 750;
+      doc.moveTo(leftColumn, footerY).lineTo(pageWidth, footerY).stroke();
+      doc.fontSize(14).font('Helvetica')
+         .text("Thank You For Your Business!", (leftColumn + pageWidth) / 2, footerY + 15, { align: "right" });
+    };
+
+    // ===== TRACK PAGES FOR HEADER/FOOTER =====
+    let pageNumber = 1;
     
-  // ===== LOGO SECTION - DIRECT FILE PATH =====
-const logoWidth = 90;
-const logoHeight =90;
-const logoX = pageWidth - logoWidth + 15;
-const logoY = 40;
-let headerH = 30;
-try {
-  // Use your EXACT file path
-  const logoPath = "C:/Users/Aarthi/Documents/logo.jpeg";
-  
-  console.log("🖼️ Attempting to load logo from:", logoPath);
-  
-  // Check if file exists
-  if (fs.existsSync(logoPath)) {
-    console.log("✅ File exists, adding to PDF...");
+    // Add header to first page and get the starting Y position
+    currentY = addHeader(pageNumber);
     
-    // Add the logo to PDF
-    doc.image(logoPath, logoX, logoY, { 
-      width: logoWidth, 
-      height: logoHeight 
+    // Listen for page additions to add headers to subsequent pages
+    doc.on('pageAdded', () => {
+      pageNumber++;
+      currentY = addHeader(pageNumber); // Reset currentY for new page
     });
-    
-    console.log("✅ Logo successfully added to PDF!");
-    headerH = Math.max(headerH, logoY + logoHeight + 10);
-  } else {
-    console.log("❌ File does NOT exist at path:", logoPath);
-    console.log("ℹ️ Current working directory:", process.cwd());
-  }
-} catch (logoError) {
-  console.error("❌ Error loading logo:", logoError);
-  // Continue without logo
-}
-
-// // ===== TEMPORARY: DEBUG LOGO POSITION =====
-// const logoWidth = 80;
-// const logoHeight = 40;
-// const logoX = pageWidth - logoWidth + 50;
-// const logoY = 30;
-
-// // Add a colored rectangle where the logo should be
-// doc.rect(logoX, logoY, logoWidth, logoHeight)
-//    .fillOpacity(0.5)
-//    .fill('blue')
-//    .fillOpacity(1);
-// doc.fillColor('white').text('LOGO', logoX + 10, logoY + 15);
-
-// // Make sure to adjust currentY after the debug rectangle too
-// currentY = Math.max(currentY, logoY + logoHeight + 10);
-
-
-
-
-
-
-
-
-    // ===== HEADER SECTION =====
-    // let headerH =30
-    doc.fontSize(20).font('Helvetica-Bold').text(company.name, leftColumn, currentY);
-    currentY += 30;
-
-    doc.fontSize(10).font('Helvetica')
-       .text(company.address, leftColumn, currentY);
-    currentY +=15;
-    
-    doc.text(`Phone: ${company.phone || "000-000-0000"}`, leftColumn, currentY);
-    currentY += 15;
-    
-    doc.text(`Email: ${company.email || "contact@company.com"}`, leftColumn, currentY);
-    currentY += 15;
-
-    if (company.gst) {
-      doc.text(`GST: ${company.gst}`, leftColumn, currentY);
-      currentY += 15;
-    }
-
-    // Horizontal line after header
-    currentY += 10;
-    doc.moveTo(leftColumn, currentY).lineTo(pageWidth, currentY).stroke();
-    currentY += 20;
-
-
-    
 
     // ===== BILL TO SECTION - LEFT SIDE =====
     const billToStartY = currentY;
     doc.fontSize(16).font('Helvetica-Bold').text("BILL TO", leftColumn, currentY);
     currentY += 20;
 
-    doc.fontSize(10).font('Helvetica') //?
+    doc.fontSize(10).font('Helvetica')
        .text(customer.name, leftColumn, currentY);
     currentY += 15;
     
@@ -494,80 +475,78 @@ try {
     });
 
     // ===== ITEMS TABLE =====
-  // ===== ITEMS TABLE =====
-// Find the maximum Y position between left and right columns
-const leftColumnBottom = billToStartY + 120;
-currentY = Math.max(currentY, leftColumnBottom) + 10;
+    const leftColumnBottom = billToStartY + 120;
+    currentY = Math.max(currentY, leftColumnBottom) + 10;
 
-// Table headers
-doc.rect(leftColumn, currentY, pageWidth - leftColumn, 20).fill("#f0f0f0");
-doc.fontSize(10).font('Helvetica-Bold').fillColor("#000")
-   .text("DESCRIPTION", leftColumn + 10, currentY + 5)
-   .text("REMARKS", leftColumn + 150, currentY + 5)
-   .text("AMOUNT", pageWidth - 60, currentY + 5, { align: "right" });
+    // Table headers
+    doc.rect(leftColumn, currentY, pageWidth - leftColumn, 20).fill("#f0f0f0");
+    doc.fontSize(10).font('Helvetica-Bold').fillColor("#000")
+       .text("DESCRIPTION", leftColumn + 10, currentY + 5)
+       .text("REMARKS", leftColumn + 150, currentY + 5)
+       .text("AMOUNT", pageWidth - 60, currentY + 5, { align: "right" });
 
-currentY += 25;
+    currentY += 25;
 
-// Hardcoded remarks for testing
-const hardcodedRemarks = [
-  "Urgent delivery is required.",
-  "Includes setup",
-  "1 year warranty",
-  "Color: Black",
-  "Size: Medium"
-];
+    // Hardcoded remarks for testing
+    const hardcodedRemarks = [
+      "Urgent delivery is required.",
+      "Includes setup",
+      "1 year warranty",
+      "Color: Black",
+      "Size: Medium"
+    ];
 
-// Table rows
-items.forEach((item, index) => {
-  // Check if we need a new page
-  if (currentY > 650) {
-    doc.addPage();
-    currentY = 50;
-  }
+    // Table rows
+    items.forEach((item, index) => {
+      // Check if we need a new page
+      if (currentY > 650) {
+        doc.addPage();
+        currentY = 150; // Reset Y position after header on new page
+      }
 
-  // Alternate row background - FIXED: Use actual row height
-  const remarks = item.remarks || hardcodedRemarks[index % hardcodedRemarks.length] || "";
-  
-  // Calculate heights for both columns
-  const descriptionHeight = doc.heightOfString(item.description, {
-    width: 180, // REDUCED from 350 to 180
-    align: 'left'
-  });
-  
-  const remarksHeight = doc.heightOfString(remarks, {
-    width: 150,
-    align: 'left'
-  });
+      // Alternate row background
+      const remarks = item.remarks || hardcodedRemarks[index % hardcodedRemarks.length] || "";
+      
+      // Calculate heights for both columns
+      const descriptionHeight = doc.heightOfString(item.description, {
+        width: 180,
+        align: 'left'
+      });
+      
+      const remarksHeight = doc.heightOfString(remarks, {
+        width: 150,
+        align: 'left'
+      });
 
-  // Use the maximum height for the row
-  const rowHeight = Math.max(descriptionHeight, remarksHeight, 20);
+      // Use the maximum height for the row
+      const rowHeight = Math.max(descriptionHeight, remarksHeight, 20);
 
-  // Draw background for entire row - FIXED: Use calculated rowHeight
-  if (index % 2 === 0) {
-    doc.rect(leftColumn, currentY - 5, pageWidth - leftColumn, rowHeight + 10)
-       .fillOpacity(0.1).fill("#eeeeee").fillOpacity(1).fillColor('black');
-  }
+      // Draw background for entire row
+      if (index % 2 === 0) {
+        doc.rect(leftColumn, currentY - 5, pageWidth - leftColumn, rowHeight + 10)
+           .fillOpacity(0.1).fill("#eeeeee").fillOpacity(1).fillColor('black');
+      }
 
-  // Draw description
-  doc.fontSize(10).font('Helvetica')
-     .text(item.description, leftColumn + 10, currentY, {
-       width: 180, // MUST match the width used in height calculation
-       align: 'left'
-     });
+      // Draw description
+      doc.fontSize(10).font('Helvetica')
+         .text(item.description, leftColumn + 10, currentY, {
+           width: 180,
+           align: 'left'
+         });
 
-  // Draw remarks
-  doc.text(remarks, leftColumn + 150, currentY, {
-    width: 150,
-    align: 'left'
-  });
+      // Draw remarks
+      doc.text(remarks, leftColumn + 150, currentY, {
+        width: 150,
+        align: 'left'
+      });
 
-  // Draw amount - FIXED: Position at start of row, not based on content height
-  doc.text(`$${Number(item.amount).toFixed(2)}`, pageWidth - 100, currentY, { 
-    align: "right" 
-  });
-  
-  currentY += rowHeight + 10; // FIXED: Use consistent padding
-});
+      // Draw amount
+      doc.text(`$${Number(item.amount).toFixed(2)}`, pageWidth - 100, currentY, { 
+        align: "right" 
+      });
+      
+      currentY += rowHeight + 10;
+    });
 
     // ===== TOTALS SECTION =====
     currentY += 10;
@@ -607,95 +586,45 @@ items.forEach((item, index) => {
        });
     currentY += wordsHeight + 20;
 
-   // ===== OTHER COMMENTS SECTION =====
-doc.fontSize(11).font('Helvetica-Bold').text("OTHER COMMENTS", leftColumn, currentY);
-currentY += 15;
+    // ===== OTHER COMMENTS SECTION =====
+    doc.fontSize(11).font('Helvetica-Bold').text("OTHER COMMENTS", leftColumn, currentY);
+    currentY += 15;
 
-// Add Additional Notes from the form (if provided)
-if (notes && notes.trim() !== "") {
-  doc.fontSize(10).font('Helvetica')
-     .text(`${'•'} ${notes}`, leftColumn + 10, currentY);
-  currentY += 20;
-}
-
-// Terms & Conditions section
-doc.fontSize(10).font('Helvetica-Bold').text("Terms & Conditions", leftColumn, currentY);
-currentY += 15;
-
-const defaultComments = [
-  "Total payment due in 30 days",
-  "Please include the invoice number on your check"
-];
-
-// Add default comments with bullet points
-defaultComments.forEach((comment, index) => {
-  doc.fontSize(10).font('Helvetica')
-     .text(`${'•'} ${comment}`, leftColumn + 10, currentY);
-  currentY += 15;
-});
-
-    //-----------------------------------------
-
-    // ===== SIGNATURE SECTION - RIGHT CORNER ABOVE FOOTER =====
-    const signatureY = 680; // Position above footer
-    const signatureX = pageWidth - 100; // Right aligned
-    
-    if (company.signature) {
-      try {
-        const signatureWidth = 80;
-        const signatureHeight = 40;
-        
-        // Handle different signature formats
-        if (Buffer.isBuffer(company.signature)) {
-          doc.image(company.signature, signatureX, signatureY, { 
-            width: signatureWidth, 
-            height: signatureHeight 
-          });
-        } else if (typeof company.signature === 'string') {
-          if (fs.existsSync(company.signature)) {
-            doc.image(company.signature, signatureX, signatureY, { 
-              width: signatureWidth, 
-              height: signatureHeight 
-            });
-          }
-        }
-        
-        // Add signature label
-        doc.fontSize(10).font('Helvetica')
-           .text("Suresh Mariappan", signatureX - 10, signatureY + signatureHeight + 5, {
-             width: 100,
-             align: 'center'
-           });
-      } catch (signatureError) {
-        console.error("Error loading signature:", signatureError);
-        // Continue without signature if there's an error
-      }
-    } else{
-
-    doc.fontSize(10).font('Helvetica')
-       .text('Suresh Mariappan', ((leftColumn + pageWidth) / 2) - 10, 750 - 30,  { align: "right" });
-
+    // Add Additional Notes from the form (if provided)
+    if (notes && notes.trim() !== "") {
+      doc.fontSize(10).font('Helvetica')
+         .text(`${'•'} ${notes}`, leftColumn + 10, currentY);
+      currentY += 20;
     }
-    // ===== CONTACT INFORMATION =====
-   
-    // currentY += 10;
-    // const contactText = "If you have any questions about this invoice, please contact";
-    // const contactInfo = `${company.name}, ${company.phone}, ${company.email}`;
-    
-    // const contactHeight = doc.heightOfString(contactText, { width: pageWidth - leftColumn });
-    
-    // doc.fontSize(10).font('Helvetica')
-    //    .text(contactText, leftColumn, currentY, { width: pageWidth - leftColumn })
-    //    .text(contactInfo, leftColumn, currentY + contactHeight + 5);
 
-    // doc.fontSize(10).font('Helvetica')
-    //    .text('Suresh Mariappan', ((leftColumn + pageWidth) / 2) - 10, footerY - 30,  { align: "right" });
+    // Terms & Conditions section
+    doc.fontSize(10).font('Helvetica-Bold').text("Terms & Conditions", leftColumn, currentY);
+    currentY += 15;
 
-    // ===== FOOTER =====
-     const footerY = 750;
-    doc.moveTo(leftColumn, footerY).lineTo(pageWidth, footerY).stroke();
-    doc.fontSize(14).font('Helvetica')
-       .text("Thank You For Your Business!", (leftColumn + pageWidth) / 2, footerY + 15, { align: "right" });
+    const defaultComments = [
+      "Total payment due in 30 days",
+      "Please include the invoice number on your check"
+    ];
+
+    // Add default comments with bullet points
+    defaultComments.forEach((comment, index) => {
+      doc.fontSize(10).font('Helvetica')
+         .text(`${'•'} ${comment}`, leftColumn + 10, currentY);
+      currentY += 15;
+    });
+
+    // ===== SIGNATURE SECTION =====
+    const signatureY = 680;
+    const signatureX = pageWidth - 100;
+    
+    doc.fontSize(10).font('Helvetica')
+       .text('Suresh Mariappan', signatureX - 10, signatureY + 5, {
+         width: 100,
+         align: 'center'
+       });
+
+    // ===== ADD FOOTER TO LAST PAGE =====
+    addFooter();
 
     doc.end();
 
@@ -704,7 +633,14 @@ defaultComments.forEach((comment, index) => {
     res.status(500).json({ message: "Error generating invoice", error: error.message });
   }
 };
+
 /////////////////////
+
+
+
+
+
+
 
 // Get all invoices
 export const getInvoices = async (req, res) => {

@@ -14,15 +14,6 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// // Connect to MongoDB Atlas
-// mongoose
-//   .connect(process.env.MONGODB_URI)
-//   .then(() => console.log("✅ MongoDB connected"))
-//   .catch((err) => console.log("❌ MongoDB connection error:", err));
-
-
-
-  // Add this function right after your database connection
 async function setupInitialCompany() {
   try {
     const company = await Company.findByIdAndUpdate(
